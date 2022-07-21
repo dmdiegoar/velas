@@ -1,0 +1,282 @@
+# expects a numpy array with trades
+# each trade is composed of: [time, price, quantity]
+from cmath import log
+from datetime import datetime, timedelta
+from math import sqrt
+from sqlite3 import Date
+from statistics import stdev
+from turtle import title
+import numpy as np
+from numpy import genfromtxt
+import matplotlib.pyplot as plt
+import pandas as pd
+import mplfinance as graficos
+
+
+fuente = 'rfx20_tick_confecha.csv'
+fuentess = 'rfx20_tick_corto_confecha.csv'
+fuente1= 't080722.csv'
+
+
+ticks = genfromtxt(fuentess, delimiter=',')
+#, dtype=np.str0)
+
+print(ticks)
+print(ticks.shape, ticks.size)
+
+def generate_tickbars(ticks, frequency=6):
+    times = ticks[1:,4]
+    #times = times.astype(Date)
+    #print(times)
+    prices = ticks[1:,3]
+    #prices = prices.astype(int)
+    #print("imprimiendo precios")
+    #print(prices)
+    volumes = ticks[1:,2]
+    #volumes = volumes.astype(int)
+    #print("imprimiendo vlumen")
+    #print(volumes)
+    res = np.zeros(shape=(len(range(frequency, len(prices), frequency)), 6))
+    #res = res.astype(int)
+    it = 0
+    for i in range(frequency, len(prices), frequency):
+        res[it][0] = times[i-1]                        # time
+        res[it][1] = prices[i-frequency]               # open
+        res[it][2] = np.max(prices[i-frequency:i])     # high
+        res[it][3] = np.min(prices[i-frequency:i])     # low
+        res[it][4] = prices[i-1]                       # close
+        res[it][5] = np.sum(volumes[i-frequency:i])    # volume
+        it += 1
+    return res
+print("generando")
+vela = generate_tickbars(ticks)
+velachica = vela[:133, :]
+
+print("vela generada")
+print(vela)
+
+#vela.tofile('foo.csv',sep=';')
+df = pd.DataFrame(vela)
+df.columns = ['eje','Open', 'High', 'Low', 'Close', 'Volume']
+
+#df['media']=df['eje']
+
+dfchico =df.tail(133)
+
+dfchico.eje = pd.to_datetime(dfchico.eje)
+dfchico.set_index('eje', inplace=True)
+
+def media_pandas(columna, media, min_periods=1, redondeo=2):
+    return round(columna.rolling(min_periods=min_periods, window=media).mean(), redondeo)
+
+
+
+
+def vh(columna, intervalo):
+    pass
+
+
+def esto(df, period=17):
+    for i in range(len(df)):
+        low = df.iloc[i]['Close']
+        high = df.iloc[i]['Close']
+        if i >= period:
+            n = 0
+            while n < period:
+                if df.iloc[i-n]['Close'] >= high:
+                    high = df.iloc[i-n]['Close']
+                elif df.iloc[i-n]['Close'] < low:
+                    low = df.iloc[i-n]['Close']
+                n += 1
+            df.at[i, 'best_low'] = low
+            df.at[i, 'best_high'] = high
+            df.at[i, 'fast_k'] = 100*((df.iloc[i]['Close']-df.iloc[i]['best_low'])/(df.iloc[i]['best_high']-df.iloc[i]['best_low']))
+
+    df['fast_d'] = df['fast_k'].rolling(6).mean().round(2)
+    df['slow_k'] = df['fast_d']
+    df['slow_d'] = df['slow_k'].rolling(6).mean().round(2)
+    df['fast_k'] = df['fast_k'].round(2)
+
+    return df
+
+df = esto(df)
+
+
+
+
+df['media13'] =media_pandas(df.Close, 13)
+
+df['webo'] =round(media_pandas(df.Close, 5) - media_pandas(df.Close, 35), 2)
+
+
+df['Log_Ret'] = round(np.log(df.Close / df.Close.shift(1)), 8)
+
+
+#df['Volatility'] = df['Log_Ret'].rolling(window=10, min_periods=1).std() * np.sqrt(360)
+df['Volatility'] = df['Log_Ret'].rolling(window=13, min_periods=1).std() 
+
+
+print(df)
+print(df.describe)
+print(df.columns)
+
+
+
+data_frame = df
+
+#data_frame.index = pd.date_range('1/1/1980',periods=(len(data_frame)))
+
+
+#graficos.plot(data_frame, type='candle', datetime_format='%j', title='como te ven 80')
+
+
+
+
+
+#graficos.plot(data_frame, type='renko', title='como te ven', datetime_format='%j', volume=True, mav=(13) )
+#graficos.plot(dfchico, type='candle', title='dia uno', datetime_format='%j', volume=True, mav=(13) )
+
+
+df.to_csv('files20.csv',index=True,  sep=';' )
+
+#create figure
+plt.figure()
+
+#define width of candlestick elements
+width = .4
+width2 = .05
+
+#define up and down prices
+#up = prices[prices.close>=prices.open]
+#down = prices[prices.close<prices.open]
+
+#define colors to use
+col1 = 'green'
+col2 = 'red'
+
+eje = velachica[:,0]
+open = velachica[:,1]
+max = velachica[:,2]
+min = velachica[:,3]
+close = velachica[:,4]
+
+alsistas = velachica[close>open]
+bajistas = velachica[close<open]
+
+ejeup = alsistas[:,0]
+ejebad = bajistas[:,0]
+num1 = list(ejeup)
+num2 = list(ejebad)
+print("son las velas up")
+#plot up prices
+#plt.bar(num1, close-open ,width,bottom=open,color=col1)
+#plt.bar(num1, max-close,width2,bottom=close,color=col1)
+#plt.bar(num1, min-open,width2,bottom=open,color=col1)
+
+#plot down prices
+plt.bar(eje,close-open,width,bottom=open,color=col2)
+plt.bar(eje,max-open,width2,bottom=open,color=col2)
+plt.bar(eje,min-close,width2,bottom=close,color=col2)
+
+#rotate x-axis tick labels
+plt.xticks(rotation=45, ha='right')
+
+#display candlestick chart
+#plt.show()
+
+###The way we selected the volume sizes for each cryptocurrency was by calculating the mean volume exchanged per day 
+# and then by dividing the daily mean volume by the same ratios as 5min, 15min, 30min, 1h, 4h, 12h correspond to 1d, and rounded to the nearest 10
+#########
+
+#proporcion 5min en un dia = 12 velas por hora por 24 hs diarias= 288
+
+#frecuencia5min = redondear10( (volumen promedio diario ) / 288  )
+#######
+
+# expects a numpy array with trades
+# each trade is composed of: [time, price, quantity]
+def generate_volumebars(trades, frequency=10):
+    times = trades[:,0]
+    prices = trades[:,1]
+    volumes = trades[:,2]
+    ans = np.zeros(shape=(len(prices), 6))
+    candle_counter = 0
+    vol = 0
+    lasti = 0
+    for i in range(len(prices)):
+        vol += volumes[i]
+        if vol >= frequency:
+            ans[candle_counter][0] = times[i]                          # time
+            ans[candle_counter][1] = prices[lasti]                     # open
+            ans[candle_counter][2] = np.max(prices[lasti:i+1])         # high
+            ans[candle_counter][3] = np.min(prices[lasti:i+1])         # low
+            ans[candle_counter][4] = prices[i]                         # close
+            ans[candle_counter][5] = np.sum(volumes[lasti:i+1])        # volume
+            candle_counter += 1
+            lasti = i+1
+            vol = 0
+    return ans[:candle_counter]
+
+
+
+# expects a numpy array with trades
+# each trade is composed of: [time, price, quantity]
+def generate_dollarbars(trades, frequency=1000):
+    times = trades[:,0]
+    prices = trades[:,1]
+    volumes = trades[:,2]
+    ans = np.zeros(shape=(len(prices), 6))
+    candle_counter = 0
+    dollars = 0
+    lasti = 0
+    for i in range(len(prices)):
+        dollars += volumes[i]*prices[i]
+        if dollars >= frequency:
+            ans[candle_counter][0] = times[i]                          # time
+            ans[candle_counter][1] = prices[lasti]                     # open
+            ans[candle_counter][2] = np.max(prices[lasti:i+1])         # high
+            ans[candle_counter][3] = np.min(prices[lasti:i+1])         # low
+            ans[candle_counter][4] = prices[i]                         # close
+            ans[candle_counter][5] = np.sum(volumes[lasti:i+1])        # volume
+            candle_counter += 1
+            lasti = i+1
+            dollars = 0
+    return ans[:candle_counter]
+
+
+#every time the price changes on an x percentage (e.g. 5%), we add a tile or point (equivalent to a candle in a candlestick chart) in the direction of the change. 
+# Doing so we can obtain plots such as the following, which give a clear overview of the overall trend of the market (bearish in red vs bullish in green). 
+# Then, the simple algorithm consists in trading by selling or buying in reaction to a change of trend. 
+# In other words, when a red tile appears after a succession of green tiles, we must sell and vice versa.
+
+def ptosrenko(y_data):
+
+    delta = 0.005      # delta factor
+    pre = y_data[0]   # first data-point; 
+    increment = 0
+    x_positive = []
+    y_positive = []
+    x_negative = []
+    y_negative = []
+    for i, point in enumerate(y_data): # y_data contains BTCUSD prices
+        increment += point-pre
+        increment_perc = increment/pre
+        #print(increment_perc)
+        pre = point
+        if increment_perc > delta:
+            x_positive.append(i)
+            y_positive.append(point)
+            increment = 0
+        if increment_perc < -delta:
+            x_negative.append(i)
+            y_negative.append(point)
+            increment = 0
+    return x_positive, y_positive, x_negative, y_negative
+
+
+
+print("ernko")
+#precioso = ticks[1:,4].astype(int)
+# #print(precioso)
+#renko = ptosrenko(precioso)
+#print(renko)
