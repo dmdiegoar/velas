@@ -1,1 +1,2 @@
 df['Columna3'] = df["señal"].apply(lambda x:  df['High']   if df["señal"]==True else df['High'].shift(-1))
+df['Columna3'] = df['señal'].mul (df['High']).add( df['señal'].rsub(1).mul(df['High'].shift(-1))))
